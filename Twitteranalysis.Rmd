@@ -41,6 +41,7 @@ get_glossier <- searchTwitter("glossier", n = 3200, lang = "en")
 get_milk <- searchTwitter("milk makeup", n = 3200, lang = "en") #Only 414 tweets are returned compared to glossier
 get_glossier_offi <- userTimeline(user = "glossier", n = 3200, includeRts = T)
 get_milk_offi <- userTimeline(user = "milkmakeup", n = 3200, includeRts = T)
+get_glossier_ori <- strip_retweets(get_glossier)
 ```
 ### Converting to DF
 ```{r}
@@ -143,14 +144,11 @@ gloss_reply_topterms %>%
 ```
 
 
-
-#### BTM
+#### Customers' voice
 ```{r}
-set.seed(321)
-gloss_token <- as.data.frame(gloss_df$text)
-gloss_token <- gloss_token %>% mutate(id = row_number())
-gloss_token <- gloss_token[, c(2,1)]
-gloss_token$`gloss_df$text` <- as.character(gloss_token$`gloss_df$text`)
-gloss_btm <- BTM(gloss_token, k = 5, beta = 0.01, iter = 1000, trace = 100)
-terms(gloss_btm, top_n = 10)
+gloss_unique <- unique(gloss_df$text)
+glossier_corpus <- VCorpus(VectorSource(gloss_unique))
+glossier_clean <- clean_corpus(glossier_corpus)
+glossier_tdm <- DocumentTermMatrix(glossier_clean)
+glossier_tdm_tfidf <- weightTfIdf(glossier_tdm)
 ```
