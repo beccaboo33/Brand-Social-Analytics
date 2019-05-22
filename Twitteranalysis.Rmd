@@ -1,0 +1,225 @@
+---
+title: "Social Analytics - Tweets"
+author: "Pik Shan Yiu"
+date: "4/6/2019"
+output: html_document
+---
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(openssl)
+library(httpuv)
+library(twitteR)
+library(httr)
+library(tidyverse)
+library(topicmodels)
+library(tm)
+library(wordcloud)
+library(tidytext)
+library(ggplot2)
+library(plotly)
+library(ggthemes)
+library(reshape2)
+library(scales)
+library(RColorBrewer)
+library(syuzhet)
+```
+
+### Setting up Twitter API
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#consumer_key <- "xxx"
+#consumer_secret <- "xxx"
+#access_token <-  "xxx"
+#access_secret <- "xxx""
+
+setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Making queries about tweets
+get_glossier <- searchTwitter("glossier", n = 3200, lang = "en")
+get_milk <- searchTwitter("milk makeup", n = 3200, lang = "en") 
+get_glossier_offi <- userTimeline(user = "glossier", n = 3200, includeRts = T)
+get_milk_offi <- userTimeline(user = "milkmakeup", n = 3200, includeRts = T)
+get_glossier_ori <- strip_retweets(get_glossier)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Converting to dataframe
+gloss_df <- twListToDF(get_glossier) 
+gloss_offi_df <- twListToDF(get_glossier_offi)
+milk_df <- twListToDF(get_milk)
+milk_offi_df <- twListToDF(get_milk_offi)
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+df_drop <- c("favorited", "truncated","replyToSID", "replyToUID", "longitude", "latitude") #Removing unwanted columns & duplicate
+gloss_df <- gloss_df[, !names(gloss_df) %in% df_drop]
+gloss_df <- gloss_df[gloss_df$screenName != 'glossier', ] #Removing @glossier's tweets
+milk_df <- milk_df[, !names(milk_df) %in% df_drop]
+milk_df <- milk_df[milk_df$screenName != 'milkmakeup', ] #Removing @milk's tweets
+milk_offi_df <- milk_offi_df[, !names(milk_offi_df) %in% df_drop]
+gloss_offi_df <- gloss_offi_df[, !names(gloss_offi_df) %in% df_drop]
+milk_offi_df$brand = "Milk Official"
+gloss_offi_df$brand = "Glossier Official"
+gloss_df$brand = "Glossier"
+milk_df$brand = "Milk"
+```
+
+#### Who's More Active?
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+g1 <- rbind(gloss_offi_df, milk_offi_df) %>% mutate(date = trunc(as.Date(created), "day")) %>% group_by(date, brand) %>% summarize(counts = sum(table(id))) %>% filter(date > "2018-03-26") %>% ggplot(aes(x = date, y = counts, color = brand)) + geom_line() + labs(x="Date", y="Number of Tweets") + ggtitle('Number of Tweets Across Time') + theme_tufte() + scale_color_manual(values = c("pink1", "seagreen3")) + theme(plot.title = element_text(hjust = 0.5, face='bold', size=15), text=element_text(family="Garamond")) + theme(legend.position = "top") + theme(legend.title=element_blank()) 
+ggplotly(g1) %>% layout(legend = list(x = 0.8, y = 0.9))
+```
+
+
+Glossier's official account has more amount of tweets than Milk Makeup's. Online activities are critical to secure audience attention and for brands to build awareness today. 
+
+#### Who's got more volumne
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+g2 <- rbind(gloss_df, milk_df) %>% mutate(date = trunc(as.Date(created), "day")) %>% group_by(date, brand) %>% summarize(counts = sum(table(id))) %>% filter(date > "2019-03-31") %>% ggplot(aes(x = date, y = counts, color = brand)) + geom_line() + labs(x="Date", y="Number of Tweets") + ggtitle('Number of Conversations Across Time') + theme_tufte() + scale_color_manual(values = c("pink1", "seagreen3")) + theme(plot.title = element_text(hjust = 0.5, face='bold', size=15), text=element_text(family="Garamond")) + theme(legend.position = "top") + theme(legend.title=element_blank()) 
+ggplotly(g2) %>% layout(legend = list(x = 0.8, y = 0.9))
+```
+
+People have more conversations about Glossier than Milk. This is also an indicator of brand popularity. 
+
+
+Who's got more volumne
+```{r}
+g2 <- rbind(gloss_df, milk_df) %>% mutate(date = trunc(as.Date(created), "day")) %>% group_by(date, brand) %>% summarize(counts = sum(table(id))) %>% filter(date > "2019-03-31") %>% ggplot(aes(x = date, y = counts, color = brand)) + geom_line() + labs(x="Date", y="Number of Tweets") + ggtitle('Number of Conversations Across Time') + theme_tufte() + scale_color_manual(values = c("pink1", "seagreen3")) + theme(plot.title = element_text(hjust = 0.5, face='bold', size=15), text=element_text(family="Garamond")) + theme(legend.position = "top") + theme(legend.title=element_blank()) 
+ggplotly(g2) %>% layout(legend = list(x = 0.8, y = 0.9))
+```
+
+
+#### Retweet
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+ggplotly(rbind(gloss_offi_df, milk_offi_df) %>% group_by(brand) %>% summarize(Retweet = sum(isRetweet), Selftweet = sum(table(isRetweet)) - Retweet) %>% melt() %>% ggplot(aes(x = brand, y = value, fill = variable)) + geom_bar(position = 'fill', stat = "identity") + scale_fill_manual(values = c("sienna1", "lightskyblue")) + labs(x="", y="% Retweets") + ggtitle('Who Retweets More?') + theme_tufte() + theme(plot.title=element_text(hjust=0.45, vjust=0.5, face='bold', size=15, family="Garamond")) + theme(legend.position = "top") + theme(legend.title=element_blank()) + scale_y_continuous(labels = percent_format()) + coord_flip()) %>% layout(legend = list(x = 0.8, y = 1.3))
+```
+
+One way to engage audience is to retweet their contents. Milk Makeup retweets more (in percentage) compared to Glossier, and it would be interesting to look into what contents they tend to retweet. 
+
+
+#### Are we talking? 
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+ggplotly(rbind(gloss_offi_df, milk_offi_df) %>% group_by(brand) %>% summarize(Reply = sum(!is.na(replyToSN)), Nonreply = sum(is.na(replyToSN))) %>% melt() %>% ggplot(aes(x = brand, y = value, fill = variable)) + geom_bar(position = 'fill', stat = "identity") + scale_fill_manual(values = c("sienna1", "lightskyblue")) + labs(x="", y="% Reply") + ggtitle("Let's Talk") + theme_tufte() + theme(plot.title=element_text(hjust=0.45, vjust=0.5, face='bold', size=15, family="Garamond")) + theme(legend.position = "top") + theme(legend.title=element_blank()) + scale_y_continuous(labels = percent_format()) + coord_flip()) %>% layout(legend = list(x = 0.8, y = 1.3))
+```
+
+Replying is a more direct way of engagement. More than 60% of Glossier's tweets are replies, when Milk's performance is slightly behind. High reply rate can lay a good foundation for customer service. 
+
+
+#### What are they replying about? 
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+gloss_reply <- gloss_offi_df %>% filter(is.na(replyToSN) == FALSE)
+milk_reply <- milk_offi_df %>% filter(is.na(replyToSN) == FALSE)
+gloss_reply_corpus <- VCorpus(VectorSource(gloss_reply$text))
+milk_reply_corpus <- VCorpus(VectorSource(milk_reply$text))
+removelinks <- function(x){gsub("http\\S+\\s*", "", x)}
+removebrand <- function(x){gsub("(G|g)lossi(er|ers) | (M|m)ilk", "", x)}
+removeat <- function(x){gsub("@\\w+", "", x)}
+removeemoji <- function(x){gsub('\\p{So}|\\p{Cn}', "", x, perl = TRUE)}
+clean_corpus <- function(corpus) {
+      corpus <- tm_map(corpus, content_transformer(removelinks))
+      corpus <- tm_map(corpus, content_transformer(removebrand))
+      corpus <- tm_map(corpus, content_transformer(removeat))
+      corpus <- tm_map(corpus, content_transformer(removeemoji))
+      corpus <- tm_map(corpus, content_transformer(removeNumbers))
+      corpus <- tm_map(corpus, content_transformer(removePunctuation))
+      corpus <- tm_map(corpus, content_transformer(tolower))
+      corpus <- tm_map(corpus, content_transformer(removeWords), c(stopwords("en"))) 
+      corpus <- tm_map(corpus, content_transformer(stripWhitespace))
+                       return(corpus)}
+gloss_reply_clean <- clean_corpus(gloss_reply_corpus)
+milk_reply_clean <- clean_corpus(milk_reply_corpus)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+pal1 <- brewer.pal(20, 'Reds')
+pal2 <- brewer.pal(20, 'BuGn')
+layout(matrix(c(1, 2, 3, 4), nrow=2, ncol=2), heights=c(1, 2))
+par(mar=c(0.01,0.01,0.01,0.01))
+plot.new()
+text(x=0.5, y=0.5, "Glossier's Top Words", cex=1.5, family = "Courier", col = 'pink1')
+set.seed(2103)
+wordcloud(gloss_reply_clean, max.words = 20, random.order = FALSE, scale = c(3.5, 2), colors = pal1, family = "Courier") #wordcloud for a sneak peek
+plot.new()
+text(x=0.5, y=0.5, "Milk's Top Words", cex=1.5, family = "Courier", col = 'seagreen2')
+set.seed(2103)
+wordcloud(milk_reply_clean, max.words = 20, random.order = FALSE,  scale = c(3.5, 2), colors = pal2, family = "Courier") 
+```
+
+Let's take a deeper look at what two brands are replying about. According to the word clouds, Glossier tends to reply to people in an apologetic tone, which mean they are very likely replying about order issues. On the other hand, Milk's replies seem to concern product/service launch ('asap', 'working'), and more casual conversations ('yay', 'babe'). 
+
+#### Customers' voice
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#### Customers' voice
+gloss_unique <- unique(gloss_df$text)
+milk_unique <- unique(milk_df$text)
+gloss_sentiment <- get_nrc_sentiment((gloss_unique))
+milk_sentiment <- get_nrc_sentiment(milk_unique)
+sentimentscore_glossier <- data.frame(colSums(gloss_sentiment[,]))
+sentimentscore_milk <- data.frame(colSums(milk_sentiment[,]))
+names(sentimentscore_glossier) <- "Score"
+names(sentimentscore_milk) <- "Score"
+sentimentscore_glossier <-  cbind("sentiment" = rownames(sentimentscore_glossier), sentimentscore_glossier)
+sentimentscore_milk <-  cbind("sentiment" = rownames(sentimentscore_milk), sentimentscore_milk)
+ggplot(data = sentimentscore_glossier, aes(x = sentiment, y = Score)) + geom_bar(aes(fill = sentiment), stat = "identity") +  labs(x="Sentiment", y="Score") + ggtitle("Tweets Sentiment on Glossier") + theme_tufte() + theme(plot.title=element_text(hjust=0.45, vjust=0.5, face='bold', size=15, family="Courier")) + theme(legend.position = "none")
+ggplot(data = sentimentscore_milk, aes(x = sentiment, y = Score)) + geom_bar(aes(fill = sentiment), stat = "identity") +  labs(x="Sentiment", y="Score") + ggtitle("Tweets Sentiment on Milk Makeup") + theme_tufte() + theme(plot.title=element_text(hjust=0.45, vjust=0.5, face='bold', size=15, family="Courier")) + theme(legend.position = "none")
+```
+
+
+The graphs above show the rough pictures of tweet sentiments. Both brands seem to have more positive sentiments around, which is a pretty good sign. We will look separately at the negative tweets below to inspect potential brand risks. 
+
+
+#### Shit Talk...Or Not?
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+gloss_sentiment$bad <- rowSums(gloss_sentiment[, c(1,3,4,6,9)])
+gloss_sentiment <- rowid_to_column(gloss_sentiment, "ID")
+gloss_negative <- arrange(gloss_sentiment, desc(gloss_sentiment$bad))[1:20,]$ID
+gloss_negative <- unlist(gloss_negative)
+gloss_unique <- rowid_to_column(as.data.frame(gloss_unique), "ID")
+names(gloss_unique)[2] <- "text"
+gloss_badtalk <- gloss_unique[gloss_unique$ID %in% gloss_negative, ]$text
+print(gloss_badtalk[1:20])
+```
+
+
+```{r}
+milk_sentiment$bad <- rowSums(milk_sentiment[, c(1,3,4,6,9)])
+milk_sentiment <- rowid_to_column(milk_sentiment, "ID")
+milk_negative <- arrange(milk_sentiment, desc(milk_sentiment$bad))[1:20,]$ID
+milk_negative <- unlist(milk_negative)
+milk_unique <- rowid_to_column(as.data.frame(milk_unique), "ID")
+names(milk_unique)[2] <- "text"
+badtalk_milk <- milk_unique[milk_unique$ID %in% milk_negative, ]$text
+print(badtalk_milk[1:20])
+```
+
+Here we printed some 'negative' tweets to understand potential customer complaints and brand risks. By examining the tweets manually, it immediately pops up that a lot of them are actually not negative, or could be the opposite. For example, when people say "the hydrogrip primer is that bitch", it's actually a compliment. This quick-and-dirty analysis reveals one challenge long tacked in NLP, which is a machine's inability to capture context and the changing language habits. It is not a task impossible, but it will require a lot more fine-tuning and human supervision. 
+
+### Glossier's Super Pack
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+serum <- gloss_df$text[str_detect(gloss_df$text, "serum")]
+serum_sentiment <- get_nrc_sentiment((serum))
+sentimentscore_serum <- data.frame(colSums(serum_sentiment[,]))
+names(sentimentscore_serum) <- "Score"
+sentimentscore_serum <-  cbind("sentiment" = rownames(sentimentscore_serum), sentimentscore_serum)
+ggplot(data = sentimentscore_serum, aes(x = sentiment, y = Score)) + geom_bar(aes(fill = sentiment), stat = "identity") +  labs(x="Sentiment", y="Score") + ggtitle("Tweets Sentiment on Glossier's Reformulated Super Pack") + theme_tufte() + theme(plot.title=element_text(hjust=0.45, vjust=0.5, face='bold', size=15, family="Courier")) + theme(legend.position = "none")
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+serum_sentiment$bad <- rowSums(serum_sentiment[, c(1,3,4,6,9)])
+serum_sentiment <- rowid_to_column(serum_sentiment, "ID")
+serum_negative <- arrange(serum_sentiment, desc(serum_sentiment$bad))[1:10,]$ID
+serum_negative <- unlist(serum_negative)
+serum <- rowid_to_column(as.data.frame(serum), "ID")
+names(serum)[2] <- "text"
+serum_bad <- serum[serum$ID %in% serum_negative, ]$text
+print(serum_bad[1:10])
+```
+
+Glossier recently launched their reformulated serum sets, Super Pack, and the reviews on their official website are of mixed responses. I again took a quick look at the tweet sentiments regarding the new products, and hope to gain some insights into the complaints. Overall, the sentiment performance looks healthy. When I looked into the negative tweets, again, there were no obvious complaints and the NRC sentiment has problems correctly labeling people's true intention. 
+
+#### Next Steps
+This quick analysis of the brands' social media performance reveals some interesting insights into how two beauty competitors are leveraging social medias, and how people are talking about them. However, it also reveals some obvious problems posed by NLP, which are inaccuracy due to language sarcasm and inability to detect the language context. To better leverage sentiment scores in an analysis, human supervision and fine-tuning are necessary to get a more representative result.  
